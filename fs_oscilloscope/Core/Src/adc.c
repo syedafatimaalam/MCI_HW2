@@ -18,6 +18,20 @@ volatile uint32_t captureDone = 0;
 
 // Total number of ADC conversions
 volatile uint32_t totalSamples = 0;
+// Circular buffer for continuous UART transmission.
+// Must be a power of two.
+#define UART_BUFFER_SIZE 2048U
+
+volatile uint16_t uartBuffer[UART_BUFFER_SIZE];
+
+// Index of next position to write.
+volatile uint32_t uartHead = 0;
+
+// Index of next position to read.
+volatile uint32_t uartTail = 0;
+
+// Number of samples dropped when buffer is full.
+volatile uint32_t uartDroppedSamples = 0;
 
 void ADC1_Init(void)
 {
@@ -124,13 +138,13 @@ void ADC1_2_IRQHandler(void)
 {
     if (ADC1->ISR & ADC_ISR_EOC)
     {
-        // Read converted ADC value (DR).
+        // Read the 12-bit ADC result.
         uint16_t value = (uint16_t)ADC1->DR;
 
-        // Count every completed ADC conversion.
+        // Count completed ADC conversions.
         totalSamples++;
 
-        // Store the first 1000 samples for waveform plotting.
+        // Preserve the first 1000 samples for debugging.
         if (sampleCount < BUFFER_SIZE)
         {
             adc_buffer[sampleCount] = value;
@@ -140,6 +154,22 @@ void ADC1_2_IRQHandler(void)
             {
                 captureDone = 1;
             }
+        }
+
+        // Calculate the next circular-buffer position.
+        uint32_t nextHead =
+            (uartHead + 1U) & (UART_BUFFER_SIZE - 1U);
+
+        // Store the sample if the buffer is not full.
+        if (nextHead != uartTail)
+        {
+            uartBuffer[uartHead] = value;
+            uartHead = nextHead;
+        }
+        else
+        {
+            // Record samples lost due to buffer overflow.
+            uartDroppedSamples++;
         }
     }
 }

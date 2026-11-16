@@ -1,0 +1,68 @@
+import serial
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
+
+# UART settings
+PORT = "/dev/ttyACM0"
+BAUD = 230400
+
+# ADC settings
+FS = 10000
+VREF = 3.3
+ADC_MAX = 4095
+
+# Number of samples displayed (100 ms)
+N = 1000
+
+ser = serial.Serial(PORT, BAUD, timeout=0.1)
+
+# Initialize waveform buffer
+samples = np.zeros(N, dtype=np.uint16)
+
+# Configure plot
+fig, ax = plt.subplots(figsize=(11, 5))
+
+time_ms = np.arange(N) / FS * 1000
+
+line, = ax.plot(time_ms, samples, linewidth=1.5)
+
+ax.set_xlim(0, time_ms[-1])
+ax.set_ylim(0, 3.3)
+
+ax.set_xlabel("Time (ms)")
+ax.set_ylabel("Voltage (V)")
+ax.set_title("STM32 Real-Time Oscilloscope")
+ax.grid(True)
+
+# Read and display live samples
+def update(frame):
+    global samples
+
+    data = ser.read(N * 2)
+
+    if len(data) == N * 2:
+        new_samples = np.frombuffer(data, dtype="<u2")
+
+        voltage = new_samples * VREF / ADC_MAX
+
+        line.set_ydata(voltage)
+
+        ax.set_title(
+            f"STM32 Live Oscilloscope | "
+            f"Vpp = {np.ptp(voltage):.2f} V"
+        )
+
+    return line,
+
+ani = FuncAnimation(
+    fig,
+    update,
+    interval=100,
+    blit=False,
+    cache_frame_data=False
+)
+
+plt.show()
+
+ser.close()

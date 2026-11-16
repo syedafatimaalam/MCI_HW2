@@ -1,0 +1,51 @@
+#include "stm32f303xc.h"
+#include "timer.h"
+#include "adc.h"
+#include "usart.h"
+
+#define UART_BUFFER_SIZE 2048U
+
+// Circular buffer shared with ADC interrupt.
+extern volatile uint16_t uartBuffer[UART_BUFFER_SIZE];
+extern volatile uint32_t uartHead;
+extern volatile uint32_t uartTail;
+
+// Debugging variables.
+extern volatile uint32_t totalSamples;
+extern volatile uint32_t uartDroppedSamples;
+
+int main(void)
+{
+    SystemCoreClockUpdate();
+
+    // Initialize USART1 at 230400 baud.
+    USART1_Init(230400);
+
+    // Initialize ADC1.
+    ADC1_Init();
+
+    // Start TIM2 at 10 kHz.
+    TIMER_Init();
+
+    while (1)
+    {
+        if (uartTail != uartHead)
+        {
+            // Read the next ADC sample.
+            uint16_t sample = uartBuffer[uartTail];
+
+            // Advance the circular buffer.
+            uartTail = (uartTail + 1U) & (UART_BUFFER_SIZE - 1U);
+
+            // Transmit lower byte.
+            USART1_Write(sample & 0xFFU);
+
+            // Transmit upper byte.
+            USART1_Write((sample >> 8) & 0xFFU);
+        }
+        else
+        {
+            __NOP();
+        }
+    }
+}
